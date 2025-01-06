@@ -1,4 +1,5 @@
 #include <iostream>
+#include <set>
 #include <pqxx/pqxx>
 #include "crow.h"
 #include "json.hpp"
@@ -10,7 +11,7 @@ int main()
   {
     pqxx::connection c{"postgresql://test_owner:Dria5RXuJpF9@ep-dawn-wave-a2smzw1z.eu-central-1.aws.neon.tech/test?sslmode=require"};
     crow::SimpleApp app;
-//проверить
+
  CROW_ROUTE(app, "/subject/add_subject")
      .methods("POST"_method)
      ([&](const crow::request& req) {
@@ -45,6 +46,7 @@ int main()
 
 
         json resp = json::array();
+        long long gi = 0;
         for (size_t i = 0; i < data["subjectsId"].size(); i++)
         {
           std::string querySQL = "SELECT * FROM subjects WHERE id=";
@@ -62,9 +64,16 @@ int main()
             querySQL += " LIMIT 1";
             pqxx::result R = w.exec(querySQL);
 
+
             for (auto const &row : R) {
-              resp.push_back(json::parse(row["data"].as<std::string>()));
-              resp[i]["id"] = std::stoi(id);
+
+              json obj = json::parse(row["data"].as<std::string>());
+              if(!(obj.contains("disable") &&  obj["disable"])){
+
+                  resp.push_back(json::parse(row["data"].as<std::string>()));
+                  resp[gi]["id"] = std::stoi(id);
+                  gi++;
+              }
             }
 
         }
@@ -74,6 +83,33 @@ int main()
         return crow::response{ resp.dump()};
      });
 
+ CROW_ROUTE(app, "/subject/get_all")
+     .methods("POST"_method)
+     ([&](const crow::request& req) {
+        pqxx::work w(c);
+
+        json resp = json::array();
+        long long gi = 0;
+
+        std::string querySQL = "SELECT * FROM subjects WHERE id != -1";
+        pqxx::result R = w.exec(querySQL);
+
+  
+        for (auto const &row : R) {
+
+          json obj = json::parse(row["data"].as<std::string>());
+          if( !(obj.contains("disable") &&  obj["disable"]) ){
+
+              resp.push_back(json::parse(row["data"].as<std::string>()));
+              resp[gi]["id"] = row["id"].as<int>();
+              gi++;
+          }
+        }
+      
+         
+        w.commit();
+        return crow::response{ resp.dump()};
+     });
 
 
 
@@ -124,6 +160,30 @@ int main()
         
         row["title"]  = data["title"];
         row["description"]  = data["description"];
+
+        DBManager::UpdateSubjectRow(data["subjectId"],row, w);
+        w.commit();
+
+        json resp;
+        resp["ok"] = true;
+        return crow::response{resp.dump()};
+     });
+
+ CROW_ROUTE(app, "/subject/delete_data")
+     .methods("POST"_method)
+     ([&](const crow::request& req) {
+        auto x = crow::json::load(req.body);
+        json data = json::parse(req.body);
+        if (!x)
+            return crow::response(crow::status::BAD_REQUEST);  
+        pqxx::work w(c);
+
+        json row = DBManager::GetSubjectRow(data["subjectId"], w);
+        if(row.empty()){
+          return crow::response(crow::status::CONFLICT);  
+        }
+        
+        row["disable"]  = true;
 
         DBManager::UpdateSubjectRow(data["subjectId"],row, w);
         w.commit();
@@ -199,7 +259,29 @@ int main()
 
 
 
+ CROW_ROUTE(app, "/test/delete_data")
+     .methods("POST"_method)
+     ([&](const crow::request& req) {
+        auto x = crow::json::load(req.body);
+        json data = json::parse(req.body);
+        if (!x)
+            return crow::response(crow::status::BAD_REQUEST);  
+        pqxx::work w(c);
 
+        json row = DBManager::GetTestRow(data["testId"], w);
+        if(row.empty()){
+          return crow::response(crow::status::CONFLICT);  
+        }
+        
+        row["disable"]  = true;
+
+        DBManager::UpdateTestRow(data["testId"],row, w);
+        w.commit();
+
+        json resp;
+        resp["ok"] = true;
+        return crow::response{resp.dump()};
+     });
 
  CROW_ROUTE(app, "/test/add_test")
      .methods("POST"_method)
@@ -239,6 +321,7 @@ int main()
 
 
         json resp = json::array();
+        long long gi = 0;
         for (size_t i = 0; i < data["testsId"].size(); i++)
         {
             std::string querySQL = "SELECT * FROM tests WHERE id=";
@@ -249,8 +332,13 @@ int main()
             pqxx::result R = w.exec(querySQL);
 
             for (auto const &row : R) {
-              resp.push_back(json::parse(row["data"].as<std::string>()));
-              resp[i]["id"] = std::stoi(id);
+              json obj = json::parse(row["data"].as<std::string>());
+              if(!(obj.contains("disable") &&  obj["disable"])){
+
+                  resp.push_back(json::parse(row["data"].as<std::string>()));
+                  resp[gi]["id"] = std::stoi(id);
+                  gi++;
+              }
             }
         }
       
@@ -449,7 +537,10 @@ int main()
         pqxx::result R = w.exec(querySQL);
         std::cout << "///////"<<std::endl;
         for (auto const &row : R) {
-          QuestionsId = json::parse(row["data"].as<std::string>())["questionsId"] ;
+            json obj = json::parse(row["data"].as<std::string>());
+            if(!(obj.contains("disable") &&  obj["disable"])){
+              QuestionsId = json::parse(row["data"].as<std::string>())["questionsId"] ;
+            }
         }
 
         if( QuestionsId.size() == 0){
@@ -471,7 +562,12 @@ int main()
             pqxx::result R = w.exec(querySQL);
 
             for (auto const &row : R) {
-               questions.push_back( json::parse(row["data"].as<std::string>()) );
+              json obj = json::parse(row["data"].as<std::string>());
+              if(!(obj.contains("disable") &&  obj["disable"])){
+
+                  questions.push_back( json::parse(row["data"].as<std::string>()) );
+
+              }
             }
         }
 
@@ -603,6 +699,7 @@ CROW_ROUTE(app, "/test/get_attempts_t")
 
 
         json resp = json::array();
+        long long gi = 0;
         for (size_t i = 0; i < data["questionsId"].size(); i++)
         {
             std::string querySQL = "SELECT * FROM questions WHERE id=";
@@ -613,10 +710,14 @@ CROW_ROUTE(app, "/test/get_attempts_t")
             pqxx::result R = w.exec(querySQL);
 
             for (auto const &row : R) {
-              resp.push_back( json::parse(row["data"].as<std::string>()) );
-              resp[i]["id"] = std::stoi(id);
-              resp[i]["subjectId"] = row["subjectid"].as<int>();
-              
+              json obj = json::parse(row["data"].as<std::string>());
+              if(!(obj.contains("disable") &&  obj["disable"])){
+                  resp.push_back( json::parse(row["data"].as<std::string>()) );
+                  resp[gi]["id"] = std::stoi(id);
+                  resp[gi]["subjectId"] = row["subjectid"].as<int>();
+                  gi++;
+              }
+
             }
         }
       
@@ -643,7 +744,12 @@ CROW_ROUTE(app, "/test/get_attempts_t")
         pqxx::result R = w.exec(querySQL);
 
         for (auto const &row : R) {
-          change = json::parse(row["data"].as<std::string>());
+            json obj = json::parse(row["data"].as<std::string>());
+            if(!(obj.contains("disable") &&  obj["disable"])){
+
+                change = json::parse(row["data"].as<std::string>());
+
+            }
         }
         if(change.empty()){
           return crow::response(crow::status::BAD_REQUEST);  
@@ -680,10 +786,15 @@ CROW_ROUTE(app, "/test/get_attempts_t")
         std::cout << querySQL << std::endl;
         long long i = 0;
         for (auto const &row : R) {
-          resp.push_back( json::parse(row["data"].as<std::string>()) );
-          resp[i]["id"] =  row["id"].as<int>();
-          resp[i]["subjectId"] = row["subjectid"].as<int>();
-          i++;
+            json obj = json::parse(row["data"].as<std::string>());
+            if(!(obj.contains("disable") &&  obj["disable"])){
+
+                resp.push_back( json::parse(row["data"].as<std::string>()) );
+                resp[i]["id"] =  row["id"].as<int>();
+                resp[i]["subjectId"] = row["subjectid"].as<int>();
+                i++;
+
+            }
         }
         
     
@@ -691,8 +802,114 @@ CROW_ROUTE(app, "/test/get_attempts_t")
         return crow::response{ resp.dump()};
      });
 
+ CROW_ROUTE(app, "/test/find_questions_t")
+     .methods("POST"_method)
+     ([&](const crow::request& req) {
+        auto x = crow::json::load(req.body);
+        json data = json::parse(req.body);
+        if (!x)
+            return crow::response(crow::status::BAD_REQUEST);  
+        pqxx::work w(c);
 
 
+        json testsId = (DBManager::GetSubjectRow(data["subjectId"],w))["testsId"];
+
+
+        std::set<int> AllQuestions;
+        for (size_t i = 0; i < testsId.size(); i++)
+        {
+            std::string querySQL = "SELECT * FROM tests WHERE id=";
+            std::string id = testsId[i].dump(); 
+            querySQL += id;
+
+            querySQL += " LIMIT 1";
+            pqxx::result R = w.exec(querySQL);
+
+            for (auto const &row : R) {
+              //нужно получить данные даже и из удаленных тестов
+                json TestObj = json::parse(row["data"].as<std::string>());
+                for (size_t j = 0; j < TestObj["questionsId"].size(); j++)
+                {
+                     AllQuestions.insert( std::stoi(TestObj["questionsId"][j].dump()) );
+                }
+            }
+        }
+
+        std::vector<int> Array(AllQuestions.begin(), AllQuestions.end());
+        json responce = Array;
+        w.commit();
+        return crow::response{ responce.dump()};
+     });
+
+ CROW_ROUTE(app, "/test/delete_question")
+     .methods("POST"_method)
+     ([&](const crow::request& req) {
+        auto x = crow::json::load(req.body);
+        json data = json::parse(req.body);
+        if (!x)
+            return crow::response(crow::status::BAD_REQUEST);  
+        pqxx::work w(c);
+
+
+        json testsId = (DBManager::GetSubjectRow(data["subjectId"],w))["testsId"];
+
+        for (size_t i = 0; i < testsId.size(); i++)
+        {
+            std::string querySQL = "SELECT * FROM tests WHERE id=";
+            std::string id = testsId[i].dump(); 
+            querySQL += id;
+
+            querySQL += " LIMIT 1";
+            pqxx::result R = w.exec(querySQL);
+
+            for (auto const &row : R) {
+              //нужно получить данные даже и из удаленных тестов
+                json TestObj = json::parse(row["data"].as<std::string>());
+                for (size_t j = 0; j < TestObj["questionsId"].size(); j++)
+                {
+                  if(std::stoi(TestObj["questionsId"][j].dump()) == data["questionId"]){
+                      json responce;
+                      responce["ok"] = false;
+                       return crow::response{ responce.dump()};
+                  }
+                }
+            }
+        }
+
+
+        json change;
+
+        std::string querySQL = "SELECT * FROM questions WHERE id=";
+        std::string id = data["questionId"].dump(); 
+        querySQL += id;
+
+        querySQL += " LIMIT 1";
+        pqxx::result R = w.exec(querySQL);
+
+        for (auto const &row : R) {
+          json obj = json::parse(row["data"].as<std::string>());
+          if(!(obj.contains("disable") &&  obj["disable"])){
+
+              change = json::parse(row["data"].as<std::string>());
+
+          }
+        }
+
+        if(change.empty()){
+          return crow::response(crow::status::BAD_REQUEST);  
+        }
+        
+        change["disable"]= true;
+
+        int result = DBManager::UpdateQuestionRow( data["questionId"],change,w);
+
+
+
+        json responce;
+        responce["ok"] = true;
+        w.commit();
+        return crow::response{ responce.dump()};
+     });
 
 
  app.port(4308).run();

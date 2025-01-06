@@ -12,9 +12,14 @@ namespace DBManager
         querySQL += " LIMIT 1";
         json responce = json::object();
         pqxx::result R = w.exec(querySQL);
+        
         for (auto const &row : R) {
-          responce = json::parse(row["data"].as<std::string>());
-          responce["id"] = id;
+            json obj = json::parse(row["data"].as<std::string>());
+            if(!(obj.contains("disable") &&  obj["disable"])){
+                
+                responce = obj;
+                responce["id"] = id;
+            }
         }
         return responce;
     }
@@ -63,8 +68,13 @@ namespace DBManager
         json responce = json::object();
         pqxx::result R = w.exec(querySQL);
         for (auto const &row : R) {
-          responce = json::parse(row["data"].as<std::string>());
-          responce["id"] = id;
+            json obj = json::parse(row["data"].as<std::string>());
+            if(!(obj.contains("disable") &&  obj["disable"])){
+
+                responce = json::parse(row["data"].as<std::string>());
+                responce["id"] = id;
+                
+            }
         }
         return responce;
     }
